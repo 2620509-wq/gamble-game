@@ -43,12 +43,12 @@
         /* 2. 중앙 정보 메인 카드 (유동적 크기 확보) */
         .card { 
             background: #1e293b; 
-            padding: 22px; 
+            padding: 16px 20px; /* 위아래 패딩을 줄여 슬림하게 변경 */
             border-radius: 16px; 
             box-shadow: 0 10px 25px rgba(0,0,0,0.4); 
             text-align: left;
-            flex-grow: 1;
-            margin: 20px 0;
+            flex-grow: 0; /* 🌟 무조건 화면을 꽉 채우던 성질을 끄고 콘텐츠 크기만큼만 차지하게 함 */
+            margin: 15px 0; /* 카드 위아래 마진 최적화 */
             display: flex;
             flex-direction: column;
             justify-content: center;
