@@ -9,10 +9,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // 🎯 고정된 12인 카드 UID 세팅
 const rfidCardUIDs = [
-    "04:B9:C8:7A:D2:2A:81", "04:76:CB:7A:D2:2A:81", "04:75:CB:7A:D2:2A:81", 
-    "04:74:CB:7A:D2:2A:81", "04:73:CB:7A:D2:2A:81", "04:99:C5:7A:D2:2A:81", 
-    "04:98:C5:7A:D2:2A:81", "04:97:C5:7A:D2:2A:81", "04:A3:C5:7A:D2:2A:81", 
-    "04:A2:C5:7A:D2:2A:81", "04:BF:C8:7A:D2:2A:81", "04:BE:C8:7A:D2:2A:81"
+    "88:04:b9:c8", "88:04:76:cb", "88:04:75:cb", 
+    "88:04:74:cb", "88:04:73:cb", "88:04:99:c5", 
+    "88:04:98:c5", "88:04:97:c5", "88:04:a3:c5", 
+    "88:04:a2:c5", "88:04:bf:c8", "88:04:be:c8"
 ];
 
 // 🎯 플레이어 기본 데이터 구조
@@ -144,6 +144,25 @@ app.post('/api/admin/change-player', (req, res) => {
     }
 });
 
+// [관리자 API] 1~12번 전원 '지갑 잔고(walletMoney)' 일괄 설정
+app.post('/api/admin/reset-all-wallet', (req, res) => {
+    const { targetWallet } = req.body;
+    const amount = parseInt(targetWallet);
+
+    if (isNaN(amount) || amount < 0) {
+        return res.status(400).json({ success: false, msg: "올바른 금액을 입력하세요." });
+    }
+
+    // 🌟 테이블 참여 여부와 상관없이 1번부터 12번까지 전체 유저의 지갑 잔고 일괄 변경
+    players.forEach(p => {
+        p.walletMoney = amount;
+    });
+
+    io.emit('log', `📢 [하우스 관리] 딜러 권한으로 1~12번 전원의 지갑 원본 자산이 ${amount.toLocaleString()}원으로 일괄 조정되었습니다.`);
+    
+    broadcastState();
+    res.json({ success: true });
+});
 // [지갑 충전 API]
 app.post('/api/wallet/charge', (req, res) => {
     const { pNum, amount } = req.body;
@@ -163,7 +182,7 @@ app.get('/api/arduino/pay/:uid', (req, res) => {
     const player = players.find(p => p.cardUid === uid);
     if (!player) return res.send("NOT_FOUND");
 
-    const COST = 10000;
+    const COST = 1000;
     if (player.walletMoney >= COST) {
         player.walletMoney -= COST;
         io.emit('log', `🛒 [RFID 결제] [${player.name}] 지갑에서 ${COST.toLocaleString()}원 차감`);
