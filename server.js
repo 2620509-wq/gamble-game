@@ -177,15 +177,24 @@ app.post('/api/wallet/charge', (req, res) => {
 });
 
 // [아두이노 결제 API]
-app.get('/api/arduino/pay/:uid', (req, res) => {
+app.get('/api/arduino/pay/:uid/:amount', (req, res) => {
     const uid = req.params.uid.trim().toLowerCase();
+    
+    // 1. 아두이노가 주소창에 실어 보낸 금액(amount)을 숫자로 변환
+    const cost = parseInt(req.params.amount);
+
+    // 2. 유효성 검사: 금액이 숫자가 아니거나 0 이하인 경우 방어 코드
+    if (isNaN(cost) || cost <= 0) {
+        return res.send("INVALID_AMOUNT");
+    }
+
     const player = players.find(p => p.cardUid === uid);
     if (!player) return res.send("NOT_FOUND");
 
-    const COST = 1000;
-    if (player.walletMoney >= COST) {
-        player.walletMoney -= COST;
-        io.emit('log', `🛒 [RFID 결제] [${player.name}] 지갑에서 ${COST.toLocaleString()}원 차감`);
+    // 3. 고정값 대신 변수 cost로 잔액 체크 및 차감
+    if (player.walletMoney >= cost) {
+        player.walletMoney -= cost;
+        io.emit('log', `🛒 [RFID 가변 결제] [${player.name}] 지갑에서 ${cost.toLocaleString()}원 차감`);
         broadcastState();
         res.send("SUCCESS");
     } else {
