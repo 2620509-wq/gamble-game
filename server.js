@@ -245,76 +245,156 @@ socket.on('nfc_table_checkout', (data) => {
     }
 });
 
-    // 배팅 액션 엔진
-    socket.on('player_action', (data) => {
-        const player = players.find(p => p.index === parseInt(data.pNum));
-        if (!player) return;
+    let blackjackDealerScore = 0; // 딜러 점수 전역 기록용
 
-        if (data.actionType === 'refresh') {
-            broadcastState();
+// 🔌 소켓 내부의 player_action 리스너 루프 교체
+socket.on('player_action', (data) => {
+    const player = players.find(p => p.index === parseInt(data.pNum));
+    if (!player || player.status !== "플레이 중") return;
+
+    const gameType = player.currentGame;
+    const room = gameRooms[gameType];
+    if (!room) return;
+
+    // ==========================================
+    // 🃏 [오프라인 하이브리드] 블랙잭 룰 엔진
+    // ==========================================
+    if (gameType === 'blackjack') {
+        if (data.actionType === 'hit') {
+            // 점수 계산 안 함! 오직 딜러에게 "히트했다"고 상태만 보여줌
+            player.status = "히트 선택! (카드 대기)";
+            io.emit('log', `🎲 [오프라인 블랙잭] ${player.name} 플레이어가 [히트]를 요청했습니다. 딜러님 카드를 한 장 더 주세요!`);
+            broadcastState(); 
+        } 
+        else if (data.actionType === 'stay') {
+            // 스테이를 누르면 이 플레이어는 완료 상태로 두고 다음 사람으로 차례를 넘김
+            player.status = "스테이 완료";
+            io.emit('log', `🔒 [오프라인 블랙잭] ${player.name} 플레이어가 [스테이]를 선언했습니다.`);
+            nextOfflineBlackjackTurn(room, gameType);
+        }
+        return;
+    }
+
+    // ==========================================
+    // 🎴 [분기 2] 기존 텍사스 홀덤 & 인디안 포커 베팅 엔진
+    // ==========================================
+    if (data.actionType === 'raise') {
+        const RAISE_UNIT = 10000; 
+        const callAmount = room.currentBet - player.betAmount;
+        const totalRequired = callAmount + RAISE_UNIT;
+
+        if (player.currentMoney >= totalRequired) {
+            player.currentMoney -= totalRequired;
+            player.betAmount += totalRequired;
+            room.pot += totalRequired;
+            room.currentBet = player.betAmount; 
+            player.status = "레이즈 완료";
+            io.emit('log', `🔔 [배팅] ${player.name} -> 판돈 인상! 최고베팅: ${room.currentBet.toLocaleString()}칩`);
+        } else {
+            socket.emit('error_msg', { msg: "레이즈 자금이 부족합니다!" });
             return;
         }
-
-        const room = gameRooms[player.currentGame];
-        if (!room) return;
-
-        if (player.status === "플레이 중") {
-            if (data.actionType === 'raise') {
-                const RAISE_UNIT = 10000; 
-                const callAmount = room.currentBet - player.betAmount;
-                const totalRequired = callAmount + RAISE_UNIT;
-
-                if (player.currentMoney >= totalRequired) {
-                    player.currentMoney -= totalRequired;
-                    player.betAmount += totalRequired;
-                    room.pot += totalRequired;
-                    room.currentBet = player.betAmount; 
-                    
-                    player.status = "레이즈 완료";
-                    io.emit('log', `🔔 [배팅] ${player.name} -> 판돈 인상! 최고베팅: ${room.currentBet.toLocaleString()}칩`);
-                } else {
-                    socket.emit('error_msg', { msg: "레이즈 자금이 부족합니다!" });
-                    return;
-                }
-            } 
-            else if (data.actionType === 'call') {
-                const callAmount = room.currentBet - player.betAmount;
-                
-                if (callAmount > 0) { 
-                    if (player.currentMoney >= callAmount) {
-                        player.currentMoney -= callAmount;
-                        player.betAmount += callAmount;
-                        room.pot += callAmount;
-                        player.status = "콜 완료";
-                        io.emit('log', `✅ [배팅] ${player.name} -> 콜 매칭 (+${callAmount.toLocaleString()}칩)`);
-                    } else {
-                        socket.emit('error_msg', { msg: "칩이 부족합니다! 다이(Fold)하세요." });
-                        return;
-                    }
-                } else { 
-                    player.status = "체크 완료";
-                    io.emit('log', `✅ [배팅] ${player.name} -> 체크 패스`);
-                }
-            } 
-            else if (data.actionType === 'fold') {
-                player.status = "다이";
-                io.emit('log', `❌ [배팅] ${player.name} -> 기권(다이)`);
-            }
-
-            if (checkAutoWin(player.currentGame)) return;
-
-            const activePlayers = players.filter(p => p.currentGame === player.currentGame && p.isCheckedIn && room.turnOrder.includes(p.index) && p.status !== "다이");
-            const isRoundOver = activePlayers.every(p => p.betAmount === room.currentBet);
-
-            if (isRoundOver) {
-                io.emit('log', `🎬 [라운드 종료] 전원 금액 일치. 쇼다운(카드 오픈) 돌입!`);
-                activePlayers.forEach(p => p.status = "쇼다운 (카드 오픈)");
-                broadcastState();
+    } 
+    else if (data.actionType === 'call') {
+        const callAmount = room.currentBet - player.betAmount;
+        if (callAmount > 0) { 
+            if (player.currentMoney >= callAmount) {
+                player.currentMoney -= callAmount;
+                player.betAmount += callAmount;
+                room.pot += callAmount;
+                player.status = "콜 완료";
+                io.emit('log', `✅ [배팅] ${player.name} -> 콜 매칭 (+${callAmount.toLocaleString()}칩)`);
             } else {
-                nextTurn(player.currentGame);
+                socket.emit('error_msg', { msg: "칩이 부족합니다! 다이하세요." });
+                return;
             }
+        } else { 
+            player.status = "체크 완료";
+            io.emit('log', `✅ [배팅] ${player.name} -> 체크 패스`);
+        }
+    } 
+    else if (data.actionType === 'fold') {
+        player.status = "다이";
+        io.emit('log', `❌ [배팅] ${player.name} -> 기권(다이)`);
+    }
+
+    // 포커 판돈 매칭 및 자동 턴 체인지 검사
+    if (checkAutoWin(gameType)) return;
+
+    const activePlayers = players.filter(p => p.currentGame === gameType && p.isCheckedIn && room.turnOrder.includes(p.index) && p.status !== "다이");
+    const isRoundOver = activePlayers.every(p => p.betAmount === room.currentBet);
+
+    if (isRoundOver) {
+        io.emit('log', `🎬 [라운드 종료] 전원 금액 일치. 쇼다운 돌입! 관리자가 정산해 주세요.`);
+        activePlayers.forEach(p => p.status = "쇼다운 (카드 오픈)");
+        broadcastState();
+    } else {
+        nextTurn(gameType);
+    }
+});
+
+// 🛠️ 블랙잭 전용 다음 턴 제어 알고리즘     
+function nextOfflineBlackjackTurn(room, gameType) {
+    // 아직 차례를 마치지 않은("순서 대기" 상태인) 다음 사람 찾기
+    const nextPlayerId = room.turnOrder.find(id => {
+        const p = players.find(player => player.index === id);
+        return p && p.status === "순서 대기";
+    });
+
+    if (nextPlayerId) {
+        const nextPlayer = players.find(p => p.index === nextPlayerId);
+        nextPlayer.status = "플레이 중";
+        io.emit('log', `🎲 [블랙잭] 다음 차례: ${nextPlayer.name} (${nextPlayerId}번 시트)`);
+        broadcastState();
+    } else {
+        // 모든 플레이어가 스테이를 선언해서 차례가 끝난 경우
+        io.emit('log', `🏁 [블랙잭] 모든 플레이어의 선택이 끝났습니다! 딜러님 오프라인에서 딜러 카드를 오픈하고 최종 정산해 주세요.`);
+        
+        // 딜러가 오프라인에서 게임을 완전히 끝내고 다음 판을 준비할 수 있도록 상태 유지
+        // 정산은 관리자가 admin.html에서 [승자 정산] 버튼을 누르면 초기화되도록 넘김
+        broadcastState();
+    }
+}
+
+// 🏆 블랙잭 결과 전원 자동 정산 및 무한 대기열 재순환 통합
+function settleBlackjackRound(room, gameType) {
+    io.emit('log', `🏁 [블랙잭] 최종 결과 정산 (딜러: ${blackjackDealerScore}점)`);
+    const BASE_BET = 10000; // 블랙잭 판당 기본 배팅금 정의
+
+    room.turnOrder.forEach(id => {
+        const p = players.find(player => player.index === id);
+        if(!p) return;
+
+        if (p.betAmount > 21) {
+            p.currentMoney -= BASE_BET;
+            room.pot += BASE_BET;
+            p.status = "패배 (버스트)";
+        } else if (blackjackDealerScore > 21 || p.betAmount > blackjackDealerScore) {
+            p.currentMoney += BASE_BET;
+            p.status = "🎉 승리!";
+        } else if (p.betAmount < blackjackDealerScore) {
+            p.currentMoney -= BASE_BET;
+            room.pot += BASE_BET;
+            p.status = "패배 (점수 미달)";
+        } else {
+            p.status = "무승부 (Push)";
         }
     });
+
+    const finishedPlayers = [...room.turnOrder];
+    
+    // 테이블 상태 포맷 리셋
+    room.pot = 0;
+    room.currentBet = 0;
+    room.turnOrder = [];
+    room.currentTurnIdx = 0;
+
+    // 판이 완벽하게 끝났으니 유저들 대기열(Queue) 맨 뒤로 차례대로 자동 복귀시키기!
+    setTimeout(() => {
+        returnToQueue(gameType, finishedPlayers);
+        broadcastState();
+    }, 4000); // 승패 결과 배지를 눈으로 4초간 확인할 수 있게 딜레이 후 복귀
+}
 
     // 🎲 딜러 제어: 라운드 시작 (대기열 목록에서 유저들을 데려와 셔플 진행)
     socket.on('admin_start_round', (data) => {
