@@ -6,106 +6,72 @@
     <title>🎰 플레이어 게임 룸</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        /* 📱 모바일 기본 베이스 설정 (스크롤 차단 및 터치 왜곡 방지) */
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            background: #0f172a; 
-            color: white; 
-            margin: 0; 
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            overflow: hidden; /* 모바일 특유의 튕기는 바운스 스크롤 방지 */
+            background: #0f172a; color: white; margin: 0; padding: 0;
+            display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden;
         }
-        
-
-
-        /* 1. 상단 타이틀 존 */
-        .header-zone { 
-            text-align: center;
-            padding: 10px 0;
+        .container { 
+            width: 100%; max-width: 420px; height: 100vh; max-height: 850px; 
+            padding: 20px; display: flex; flex-direction: column; justify-content: flex-start; 
         }
+        .header-zone { text-align: center; padding: 10px 0; }
         h1 { font-size: 22px; margin: 0; color: #38bdf8; font-weight: 800; letter-spacing: -0.5px; }
 
-    /* 1. 전체 컨테이너 정렬 수정 (하단 밀착 -> 중앙/상단 집중) */
-        .container { 
-            width: 100%;
-            max-width: 420px; 
-            height: 100vh;
-            max-height: 850px;
-            padding: 20px; 
-            display: flex;
-            flex-direction: column;
-            /* justify-content: space-between; 대신 알맞은 마진으로 배치 관리 */
-            justify-content: flex-start; 
-        }
-
-        /* 2. 중앙 정보 메인 카드 마진 조정 */
         .card { 
-            background: #1e293b; 
-            padding: 16px 20px;
-            border-radius: 16px; 
-            box-shadow: 0 10px 25px rgba(0,0,0,0.4); 
-            text-align: left;
-            flex-grow: 0;
-            margin-top: 10px;
-            margin-bottom: 20px; /* 카드와 버튼 사이의 간격 */
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
+            background: #1e293b; padding: 16px 20px; border-radius: 16px; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.4); text-align: left; flex-grow: 0; margin-top: 10px; margin-bottom: 15px;
+            display: flex; flex-direction: column; justify-content: center;
+        }
+        .card h3 { margin: 0 0 4px 0; color: #94a3b8; font-size: 14px; }
+        .money-text { font-size: 34px; font-weight: 800; color: #10b981; margin: 5px 0; letter-spacing: -0.5px; }
+        
+        .bet-info-board {
+            background: rgba(15, 23, 42, 0.5); padding: 10px 14px; border-radius: 10px; margin-top: 5px; font-size: 13px;
+            display: flex; justify-content: space-between; border-left: 4px solid #f59e0b;
         }
 
-        /* 3. 버튼 그룹 위쪽 여백 당기기 */
+        #game-info-line { font-size: 14px; color: #cbd5e1; margin-top: 10px; font-weight: 500; }
+        .status-wrapper { font-size: 14px; color: #cbd5e1; margin-top: 12px; border-top: 1px solid #334155; padding-top: 10px; }
+
+        /* 📱 2x2 완벽 정렬 그리드 시스템 */
         .btn-group { 
             display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(1px, 1fr)); 
+            grid-template-columns: repeat(2, 1fr); 
             gap: 12px; 
-            margin-bottom: 12px; /* 액션 버튼과 퇴장 버튼 사이 간격 */
+            margin-bottom: 15px; 
         }
         .btn-group button { 
-            height: 60px; /* 모바일 엄지손가락 크기에 맞춘 두툼한 높이 */
-            border: none; 
-            border-radius: 12px; 
-            font-size: 16px; 
-            font-weight: bold; 
-            color: white; 
-            cursor: pointer; 
+            height: 58px; border: none; border-radius: 12px; font-size: 16px; 
+            font-weight: bold; color: white; cursor: pointer; 
             transition: transform 0.1s, opacity 0.2s;
+            position: relative; z-index: 5; /* 🌟 터치 이벤트가 다른 레이어에 묻히지 않도록 최상단 고정 */
         }
-        .btn-group button:active { transform: scale(0.96); } /* 모바일 터치 피드백 애니메이션 */
+        .btn-group button:active { transform: scale(0.95); }
         
-        /* 버튼 컬러셋 */
+        /* 버튼 개별 컬러셋 */
         .btn-raise { background: #f59e0b; color: black; }
         .btn-call { background: #3b82f6; }
-        .btn-fold { background: #64748b; }
+        .btn-fold { background: #475569; }
+        .btn-allin { background: #dc2626 !important; color: white !important; font-weight: 900; }
         .btn-hit { background: #10b981; }
         .btn-stay { background: #ef4444; }
 
-        /* 🔴 하단 퇴장 버튼 스타일 */
+        /* 🔴 퇴장 버튼 (클릭 영역 겹침 방지 적용) */
         .btn-leave-bottom { 
-            width: 100%; 
-            background: #ef4444; 
-            color: white; 
-            border: none; 
-            height: 52px;
-            border-radius: 12px; 
-            font-weight: bold; 
-            cursor: pointer; 
-            font-size: 15px; 
-            transition: background 0.2s;
-            margin-bottom: 10px;
+            width: 100%; background: #7f1d1d; color: #fca5a5; border: none; 
+            height: 52px; border-radius: 12px; font-weight: bold; cursor: pointer; 
+            font-size: 15px; margin-top: auto; margin-bottom: 100px;
+            position: relative; z-index: 10;
         }
-        .btn-leave-bottom:hover { background: #dc2626; }
 
-        /* 🎯 커스텀 모달 웹뷰 팝업 최적화 */
+        /* 🎯 커스텀 모달 팝업 구조 안정화 */
         .modal-overlay { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(15, 23, 42, 0.9); 
             display: flex; justify-content: center; align-items: center; 
-            opacity: 0; pointer-events: none; transition: opacity 0.2s ease; z-index: 1000; 
+            opacity: 0; pointer-events: none; transition: opacity 0.2s ease; z-index: 2000; 
         }
         .modal-overlay.active { opacity: 1; pointer-events: auto; }
         .modal-box { 
@@ -120,17 +86,19 @@
 </head>
 <body>
     <div class="container">
-        <div class="header-zone">
-            <h1 id="game-theme-header">🎰 GAME ROOM</h1>
-        </div>
+        <div class="header-zone"><h1 id="game-theme-header">🎰 GAME ROOM</h1></div>
 
         <div class="card">
             <h3 id="player-title">플레이어</h3>
             <div class="money-text" id="table-money-display">0 칩</div>
-            <div id="game-info-line">오프라인 게임 진행 대기 중</div>
-            <div class="status-wrapper">
-                현재 진행 상태: <span id="player-status" style="font-weight:bold; color:#52ea93;">대기</span>
+            
+            <div class="bet-info-board" id="bet-board-ui" style="display:none;">
+                <div>토탈 팟: <span id="ui-total-pot" style="color:#10b981; font-weight:bold;">0</span></div>
+                <div>현재 최고 배팅금: <span id="ui-current-bet" style="color:#f59e0b; font-weight:bold;">0</span></div>
             </div>
+
+            <div id="game-info-line">오프라인 게임 진행 대기 중</div>
+            <div class="status-wrapper">현재 진행 상태: <span id="player-status" style="font-weight:bold; color:#52ea93;">대기</span></div>
         </div>
 
         <div class="btn-group" id="dynamic-buttons"></div>
@@ -160,26 +128,41 @@
         const urlParams = new URLSearchParams(window.location.search);
         const gameType = urlParams.get('type') || 'holdem';
 
-        // 🚀 게임 타입별 UI 및 버튼 컴포넌트 렌더링 분기
         const btnContainer = document.getElementById('dynamic-buttons');
         
+        // 🚀 초기 렌더링 시 버튼 그리기 및 온클릭 함수 매핑 보장
+        // 🚀 game.html의 버튼 생성 분기문 중 blackjack 분기 전면 교체
         if (gameType === 'blackjack') {
             document.getElementById('game-theme-header').innerText = "🃏 BLACKJACK ROOM";
+            btnContainer.style.gridTemplateColumns = "1fr"; // 베팅창 구역 공간 확보
             btnContainer.innerHTML = `
-                <button class="btn-hit" onclick="sendAction('hit')">히트 (Hit)</button>
-                <button class="btn-stay" onclick="sendAction('stay')">스테이 (Stay)</button>
+                <div style="display: flex; gap: 8px; margin-bottom: 5px;">
+                    <input type="number" id="bj-bet-input" placeholder="베팅할 칩 입력" 
+                           style="flex: 1; height: 48px; border-radius: 8px; border: 2px solid #3b82f6; background: #1e293b; color: white; padding: 0 12px; font-size: 15px; font-weight: bold;">
+                    <button style="width: 80px; height: 48px; background: #3b82f6; border: none; border-radius: 8px; color: white; font-weight: bold;" 
+                            onclick="sendBjBet()">베팅</button>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; width: 100%;">
+                    <button class="btn-hit" onclick="sendAction('hit')">히트 (Hit)</button>
+                    <button class="btn-stay" onclick="sendAction('stay')">스테이 (Stay)</button>
+                </div>
             `;
-        } else {
+        }
+
+        // 스크립트 최하단에 블랙잭 수동 베팅 전송 전용 함수 배치
+         else {
             document.getElementById('game-theme-header').innerText = gameType === 'holdem' ? "🎴 TEXAS HOLDEM" : "👑 INDIAN POKER";
+            document.getElementById('bet-board-ui').style.display = 'flex'; 
             btnContainer.innerHTML = `
                 <button class="btn-raise" onclick="sendAction('raise')">레이즈</button>
                 <button class="btn-call" onclick="sendAction('call')">콜 / 체크</button>
                 <button class="btn-fold" onclick="sendAction('fold')">다이 (Fold)</button>
+                <button class="btn-allin" onclick="sendAction('allin')">ALL-IN</button>
             `;
         }
 
         function openLeaveModal() { document.getElementById('leaveModal').classList.add('active'); }
-        function closeLeaveModal() { document.getElementById('leaveModal').classList.remove('active'); }
+        function closeLeaveModal() { document.getElementById('leaveModal').classList.remove('remove'); document.getElementById('leaveModal').classList.remove('active'); }
         function confirmLeave() { socket.emit('nfc_table_checkout', { pNum: pNum }); setTimeout(() => { window.location.href = `/wallet/${pNum}`; }, 250); }
 
         function sendAction(type) {
@@ -188,29 +171,43 @@
 
         socket.on('game_update', (data) => {
             const me = data.players.find(p => p.index === pNum);
-            if (me) {
+            const room = data.rooms[gameType];
+
+            if (me && room) {
                 document.getElementById('player-title').innerText = `👤 ${me.name} (${pNum}번 시트)`;
                 document.getElementById('table-money-display').innerText = `${me.currentMoney.toLocaleString()} 칩`;
                 
-                if(gameType === 'blackjack') {
-                    document.getElementById('game-info-line').innerHTML = `오프라인 카드를 확인하고 액션을 누르세요.`;
+                if(gameType !== 'blackjack') {
+                    document.getElementById('ui-total-pot').innerText = room.pot.toLocaleString();
+                    document.getElementById('ui-current-bet').innerText = room.currentBet.toLocaleString();
+                    document.getElementById('game-info-line').innerHTML = `내가 이번 판에 낸 판돈: <span style="color:#f59e0b; font-weight:bold;">${me.betAmount.toLocaleString()}</span> 칩`;
                 } else {
-                    document.getElementById('game-info-line').innerHTML = `내가 이번 판에 낸 판돈: <span style="font-weight:bold; color:#f59e0b;">${me.betAmount.toLocaleString()}</span> 칩`;
+                    document.getElementById('game-info-line').innerHTML = `오프라인 카드를 확인하고 액션을 누르세요.`;
                 }
                 
                 document.getElementById('player-status').innerText = me.status;
 
-                // 턴 활성화/비활성화 처리
-                const buttons = document.querySelectorAll('#dynamic-buttons button');
+                // 🔒 오직 상단 조작 액션 버튼들만 활성/비활성 처리 (퇴장 버튼 영향 안 가게 격리)
+                const gameActions = document.querySelectorAll('#dynamic-buttons button');
                 if (me.status === "플레이 중") {
-                    buttons.forEach(btn => { btn.style.opacity = "1"; btn.style.pointerEvents = "auto"; });
+                    gameActions.forEach(btn => { 
+                        btn.style.opacity = "1"; 
+                        btn.style.pointerEvents = "auto"; 
+                    });
                 } else {
-                    buttons.forEach(btn => { btn.style.opacity = "0.3"; btn.style.pointerEvents = "none"; });
+                    gameActions.forEach(btn => { 
+                        btn.style.opacity = "0.3"; 
+                        btn.style.pointerEvents = "none"; 
+                    });
                 }
             }
         });
 
         socket.on('error_msg', (data) => { alert(data.msg); });
+        function sendBjBet() {
+            const amt = document.getElementById('bj-bet-input').value;
+            socket.emit('player_action', { pNum: pNum, actionType: 'bj_bet', amount: amt, gameType: 'blackjack' });
+        }
     </script>
 </body>
 </html>
