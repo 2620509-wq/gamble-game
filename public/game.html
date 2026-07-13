@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>하우스 실시간 모바일 배팅룸</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        .btn-leave { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px; transition: background 0.2s, transform 0.1s;  }
+        .btn-leave:hover { background: #dc2626; }
+        :root { --bg-color: #0f172a; --card-color: #1e293b; --accent-color: #38bdf8; }
+        body { font-family: sans-serif; background: var(--bg-color); color: white; text-align: center; padding: 15px; margin: 0; transition: background 0.4s; }
+        .game-header { padding: 15px; border-radius: 12px; margin-bottom: 15px; font-weight: bold; font-size: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .card { background: var(--card-color); padding: 20px; border-radius: 12px; margin-bottom: 15px; text-align: left; border: 1px solid rgba(255,255,255,0.05); }
+        .money-text { font-size: 32px; font-weight: bold; color: #f59e0b; }
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        button { padding: 12px; font-size: 16px; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; color: white; background: #334155; }
+        .btn-raise { background: var(--accent-color); grid-column: span 2; font-size: 18px; }
+        
+    </style>
+</head>
+<body>
+    <div class="container">
+        
+
+    <div class="game-header" id="game-theme-header">로딩 중...</div>
+
+    <div class="card">
+        <h3 style="margin: 0 0 5px 0; color: #94a3b8;" id="player-title">플레이어</h3>
+        <div class="money-text" id="table-money-display">0 칩</div>
+        <div style="font-size: 14px; color: #f59e0b; margin-top: 5px;">내가 이번 판에 낸 판돈: <span id="my-bet-display" style="font-weight:bold;">0</span> 칩</div>
+        <p style="font-size: 13px; color: #cbd5e1; margin: 8px 0 0 0;">현재 상태: <span id="player-status" style="font-weight:bold; color:#52ea93;">대기</span></p>
+    </div>
+
+    <script>
+        // game.html 소켓 데이터 바인딩 구역 수정
+        socket.on('game_update', (data) => {
+            const me = data.players.find(p => p.index === pNum);
+            if (me) {
+                document.getElementById('player-title').innerText = `👤 ${me.name} (${pNum}번 시트)`;
+                document.getElementById('table-money-display').innerText = `${me.currentMoney.toLocaleString()} 칩`;
+                document.getElementById('my-bet-display').innerText = me.betAmount.toLocaleString(); // 베팅액 연동
+                document.getElementById('player-status').innerText = me.status;
+            }
+        });
+</script>
+    <div class="card">
+        <h4 style="margin: 0 0 10px 0; color: #94a3b8;">🎯 실시간 액션</h4>
+        <div class="btn-group">
+            <button class="btn-raise" onclick="action('raise')">🔔 레이즈 (10,000칩)</button>
+            <button style="background: #10b981;" onclick="action('call')">✅ 체크 / 콜</button>
+            <button style="background: #ef4444;" onclick="action('fold')">❌ 폴드 (다이)</button>
+        </div>
+    
+    </div>
+
+    <script>
+        const socket = io();
+        const pathSegments = window.location.pathname.split('/');
+        const pNum = parseInt(pathSegments[pathSegments.length - 1]) || 1;
+        const urlParams = new URLSearchParams(window.location.search);
+        const gameType = urlParams.get('type') || 'holdem';
+
+        const themes = {
+            blackjack: { title: "🃏 CASINO BLACKJACK", bg: "#064e3b", card: "#022c22", accent: "#10b981" },
+            holdem: { title: "🎴 TEXAS HOLD'EM POKER", bg: "#450a0a", card: "#7f1d1d", accent: "#f43f5e" },
+            indian: { title: "👑 INDIAN POKER ROOM", bg: "#2e1065", card: "#4c1d95", accent: "#a855f7" }
+        };
+
+        const currentTheme = themes[gameType] || themes.holdem;
+        const root = document.documentElement;
+        root.style.setProperty('--bg-color', currentTheme.bg);
+        root.style.setProperty('--card-color', currentTheme.card);
+        root.style.setProperty('--accent-color', currentTheme.accent);
+        document.getElementById('game-theme-header').innerText = currentTheme.title;
+
+        socket.on('game_update', (data) => {
+            const me = data.players.find(p => p.index === pNum);
+            if (me) {
+                document.getElementById('player-title').innerText = `👤 ${me.name} (${pNum}번 시트)`;
+                document.getElementById('table-money-display').innerText = `${me.currentMoney.toLocaleString()} 칩`;
+                document.getElementById('player-status').innerText = me.status;
+            }
+        });
+        function leaveTable() {
+            if (confirm("정말 테이블에서 퇴장하시겠습니까? 현재 테이블의 칩이 지갑으로 정산됩니다.")) {
+                socket.emit('nfc_table_checkout', { pNum: pNum });
+                
+                // 퇴장 후 본인의 지갑 페이지로 자동 리다이렉트
+                setTimeout(() => {
+                    window.location.href = `/wallet/${pNum}`;
+                }, 300);
+            }
+        }
+
+        function action(type) {
+            socket.emit('player_action', { pNum: pNum, actionType: type });
+        }
+        
+        socket.on('error_msg', (data) => alert(data.msg));
+    </script>
+    <script>
+    socket.on('game_update', (data) => {
+        const me = data.players.find(p => p.index === pNum);
+        if (me) {
+            document.getElementById('player-title').innerText = `👤 ${me.name} (${pNum}번 시트)`;
+            document.getElementById('table-money-display').innerText = `${me.currentMoney.toLocaleString()} 칩`;
+            document.getElementById('my-bet-display').innerText = me.betAmount.toLocaleString();
+            document.getElementById('player-status').innerText = me.status;
+
+            // 🌟 내 턴("플레이 중")일 때만 배팅 버튼들이 정상 클릭되도록 스타일 조작
+            const buttons = document.querySelectorAll('.btn-group button');
+            if (me.status === "플레이 중") {
+                buttons.forEach(btn => { btn.style.opacity = "1"; btn.style.pointerEvents = "auto"; });
+                document.getElementById('game-theme-header').innerText = "🔥 당신의 배팅 차례입니다! 🔥";
+            } else {
+                buttons.forEach(btn => { btn.style.opacity = "0.3"; btn.style.pointerEvents = "none"; });
+                
+                const urlParams = new URLSearchParams(window.location.search);
+                const gameType = urlParams.get('type') || 'holdem';
+                const titles = { blackjack: "🃏 CASINO BLACKJACK", holdem: "🎴 TEXAS HOLD'EM POKER", indian: "👑 INDIAN POKER ROOM" };
+                document.getElementById('game-theme-header').innerText = titles[gameType] + " (상대 턴 대기 중)";
+            }
+        }
+    });
+    
+</script>
+</body>
+        <div class="header-zone">
+            <button class="btn-leave" onclick="leaveTable()">🔴 테이블 퇴장</button>
+        </div>
+</html>
