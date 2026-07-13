@@ -15,14 +15,27 @@
         .pot-text { font-size: 18px; font-weight: bold; color: #f59e0b; margin: 5px 0; }
         .btn-start { width: 100%; padding: 10px; background: #10b981; color: white; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; margin-bottom: 8px; }
         
-        /* 🏆 정산 구역 스타일 */
         .settle-box { background: rgba(255, 255, 255, 0.1); padding: 8px; border-radius: 6px; display: flex; gap: 5px; align-items: center; }
         .settle-input { width: 45% !important; padding: 6px !important; margin: 0 !important; text-align: center; }
         .btn-win { width: 50%; padding: 8px; background: #f59e0b; color: black; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
         
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
-        .p-card { background: #1e293b; padding: 10px; border-radius: 8px; font-size: 12px; }
-        input { width: 80%; padding: 4px; margin: 2px 0; background: #0f172a; color: white; border: 1px solid #475569; }
+        /* 👤 시트 그리드 레이아웃 고도화 */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 15px; }
+        .p-card { background: #1e293b; padding: 15px; border-radius: 12px; font-size: 13px; border: 1px solid #334155; transition: all 0.2s; }
+        .p-card.active-play { border-color: #38bdf8; box-shadow: 0 0 10px rgba(56, 189, 248, 0.2); }
+        
+        /* 💰 실시간 금액 디스플레이 스타일 */
+        .live-money-box { background: rgba(15, 23, 42, 0.6); padding: 8px; border-radius: 6px; margin: 8px 0; font-size: 12px; border-left: 4px solid #10b981; }
+        .money-row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+        .money-val { font-weight: bold; color: #34d399; }
+        .bet-val { font-weight: bold; color: #f59e0b; }
+        .wallet-val { font-weight: bold; color: #94a3b8; }
+        
+        .status-badge { inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; background: #475569; color: #cbd5e1; }
+        
+        input { width: 90%; padding: 6px; margin: 4px 0; background: #0f172a; color: white; border: 1px solid #475569; border-radius: 4px; font-size: 12px; }
+        .btn-update { width: 96%; background: #3b82f6; border: none; color: white; padding: 6px; font-weight: bold; border-radius: 4px; cursor: pointer; margin-top: 5px; }
+        .btn-update:hover { background: #2563eb; }
     </style>
 </head>
 <body>
@@ -75,32 +88,57 @@
         </div>
     </div>
 
-    <h2>👤 2. 시트 멤버 매핑 테이블</h2>
+    <div style="background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 30px; border: 1px dashed #f59e0b; display: flex; flex-direction: column; gap: 15px;">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <b style="color: #10b981; font-size: 14px; min-width: 160px;">💰 전원 테이블 칩 설정:</b>
+            <input type="number" id="all-target-money" placeholder="예: 50000" style="width: 200px; margin: 0; padding: 8px;">
+            <button onclick="resetAllMoney()" style="background: #10b981; color: white; border: none; padding: 8px 16px; font-weight: bold; border-radius: 6px; cursor: pointer;">칩 일괄 적용</button>
+        </div>
+        
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <b style="color: #38bdf8; font-size: 14px; min-width: 160px;">💳 전원 지갑 자산 설정:</b>
+            <input type="number" id="all-target-wallet" placeholder="예: 100000" style="width: 200px; margin: 0; padding: 8px;">
+            <button onclick="resetAllWallet()" style="background: #38bdf8; color: white; border: none; padding: 8px 16px; font-weight: bold; border-radius: 6px; cursor: pointer;">자산 일괄 적용</button>
+        </div>
+    </div>
+
+    <h2>👤 2. 실시간 시트별 칩 현황 모니터링 (1~12번)</h2>
     <div class="grid" id="player-grid"></div>
 
     <script>
         const socket = io();
 
+        // 12개 시트 기본 카드 렌더링
         const grid = document.getElementById('player-grid');
         for (let i = 1; i <= 12; i++) {
             grid.innerHTML += `
-                <div class="p-card">
-                    <b>📍 ${i}번</b><br>
-                    <input type="text" id="name-${i}" placeholder="이름">
-                    <input type="number" id="money-${i}" value="0">
-                    <button style="width:90%; background:#3b82f6; border:none; color:white; padding:3px;" onclick="updatePlayer(${i})">갱신</button>
+                <div class="p-card" id="card-box-${i}">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                        <b style="font-size:15px; color:#38bdf8;">📍 시트 ${i}번</b>
+                        <span class="status-badge" id="badge-${i}">대기</span>
+                    </div>
+                    
+                    <div class="live-money-box">
+                        <div class="money-row"><span>현재 테이블 칩:</span> <span class="money-val" id="live-money-${i}">0 칩</span></div>
+                        <div class="money-row"><span>이번 판 배팅액:</span> <span class="bet-val" id="live-bet-${i}">0 칩</span></div>
+                        <div class="money-row"><span>지갑 잔고:</span> <span class="wallet-val" id="live-wallet-${i}">0 원</span></div>
+                    </div>
+
+                    <input type="text" id="name-${i}" placeholder="이름 변경">
+                    <input type="number" id="money-${i}" placeholder="원래 지갑 잔고 수정">
+                    <button class="btn-update" onclick="updatePlayer(${i})">정보 강제 설정</button>
                 </div>
             `;
         }
 
         socket.on('game_update', (data) => {
+            // 상단 게임룸/대기열 정보 업데이트
             const types = ['blackjack', 'holdem', 'indian'];
             types.forEach(type => {
                 document.getElementById(`pot-${type}`).innerText = data.rooms[type].pot.toLocaleString();
                 const qBox = document.getElementById(`queue-${type}`);
                 
                 let html = "<div style='color:#52ea93; font-weight:bold;'>[현재 참여자 상태]</div>";
-                
                 const room = data.rooms[type];
                 if(room.turnOrder && room.turnOrder.length > 0){
                     room.turnOrder.forEach((pIndex, seq) => {
@@ -124,6 +162,47 @@
                 }
                 qBox.innerHTML = html;
             });
+
+            // 🌟 하단 1~12번 시트 실시간 금액 및 상태 연동
+            data.players.forEach(p => {
+                const i = p.index;
+                
+                // 실시간 텍스트 주입
+                document.getElementById(`live-money-${i}`).innerText = p.currentMoney.toLocaleString() + " 칩";
+                document.getElementById(`live-bet-${i}`).innerText = p.betAmount.toLocaleString() + " 칩";
+                document.getElementById(`live-wallet-${i}`).innerText = p.walletMoney.toLocaleString() + " 원";
+                
+                // 현재 상태 배지 적용
+                const badge = document.getElementById(`badge-${i}`);
+                badge.innerText = p.status;
+                
+                // 상태별 배지 색상 커스텀
+                const cardBox = document.getElementById(`card-box-${i}`);
+                cardBox.classList.remove('active-play');
+
+                if (p.status === "플레이 중") {
+                    badge.style.background = "#ef4444";
+                    badge.style.color = "white";
+                    cardBox.classList.add('active-play'); // 턴이 왔을 때 카드 테두리에 파란 네온 불빛 효과
+                } else if (p.status === "대기열 진입") {
+                    badge.style.background = "#f59e0b";
+                    badge.style.color = "black";
+                } else if (p.status === "쇼다운 (카드 오픈)") {
+                    badge.style.background = "#10b981";
+                    badge.style.color = "white";
+                } else if (p.status === "다이") {
+                    badge.style.background = "#64748b";
+                    badge.style.color = "#cbd5e1";
+                } else {
+                    badge.style.background = "#475569";
+                    badge.style.color = "#cbd5e1";
+                }
+
+                // 입력 폼에 현재 이름과 지갑 기본값 노출 유지 (수정하기 편하게)
+                if(!document.getElementById(`name-${i}`).value) {
+                    document.getElementById(`name-${i}`).value = p.name;
+                }
+            });
         });
 
         function updatePlayer(pNum) {
@@ -138,13 +217,32 @@
 
         function startRound(gameType) { socket.emit('admin_start_round', { gameType: gameType }); }
         
-        // 🏆 딜러가 직접 최종 승자 시트 번호를 입력해 정산하는 함수
         function giveWin(gameType) {
             const wIdx = document.getElementById(`win-idx-${gameType}`).value;
             if(!wIdx) return alert("승리한 플레이어의 시트 번호를 입력하세요!");
             
             socket.emit('admin_game_win', { gameType: gameType, winnerIndex: wIdx });
-            document.getElementById(`win-idx-${gameType}`).value = ""; // 입력창 초기화
+            document.getElementById(`win-idx-${gameType}`).value = "";
+        }
+        // 맨 밑에 추가
+        // 지갑 자산 일괄 적용 함수
+        function resetAllWallet() {
+            const targetWallet = document.getElementById('all-target-wallet').value;
+            if(!targetWallet) return alert("일괄 적용할 지갑 자산을 입력하세요!");
+
+            if(confirm(`1번부터 12번까지 모든 플레이어의 기본 지갑 잔고를 ${parseInt(targetWallet).toLocaleString()}원으로 초기화하시겠습니까?`)) {
+                fetch('/api/admin/reset-all-wallet', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ targetWallet: targetWallet })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if(data.success) {
+                        document.getElementById('all-target-wallet').value = "";
+                    }
+                });
+            }
         }
     </script>
 </body>
