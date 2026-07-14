@@ -20,8 +20,8 @@ let players = Array.from({ length: 12 }, (_, i) => ({
     isAllIn: false 
 }));
 
-// 🎯 게임장별 구조체
-let waitingQueues = { blackjack: [], holdem: [], indian: [] };
+// 🎯 게임장별 구조체 (💡수정: 다이스, 슬롯 대기열 추가)
+let waitingQueues = { blackjack: [], holdem: [], indian: [], dice: [], slot: [] };
 let gameRooms = {
     blackjack: { pot: 0, currentBet: 0, turnOrder: [], currentTurnIdx: 0 },
     holdem: { pot: 0, currentBet: 0, turnOrder: [], currentTurnIdx: 0, actionCount: 0 },
@@ -44,6 +44,8 @@ app.get('/game/:pNum', (req, res) => res.sendFile(path.join(__dirname, 'public',
 
 // 🌟 판이 끝난 유저들을 대기열 목록으로 복귀시키는 함수
 function returnToQueue(gameType, participantIds) {
+    if (!waitingQueues[gameType]) return; // 💡수정: 안전 장치 추가
+    
     participantIds.forEach(pIndex => {
         const p = players.find(player => player.index === pIndex);
         if (p && p.isCheckedIn) {
@@ -60,10 +62,10 @@ function returnToQueue(gameType, participantIds) {
 
 // 🎯 [자동 정산 규칙 엔진] 기권승 발생 시 (포커/인디안 전용)
 function checkAutoWin(gameType) {
-    if (gameType === 'blackjack') return false; 
+    if (gameType === 'blackjack' || !gameRooms[gameType]) return false; 
     
     const room = gameRooms[gameType];
-    if (!room || room.turnOrder.length === 0) return false;
+    if (room.turnOrder.length === 0) return false;
     
     const activeInRoom = players.filter(p => p.currentGame === gameType && p.isCheckedIn && room.turnOrder.includes(p.index));
     const survivors = activeInRoom.filter(p => p.status !== "다이");
@@ -77,11 +79,14 @@ function checkAutoWin(gameType) {
         
         const finishedPlayers = [...room.turnOrder];
 
+        // 💡수정: 타이머가 돌기 전에 즉시 룸 데이터를 초기화하여 데이터 꼬임 방지
         room.pot = 0;
         room.currentBet = 0;
         room.turnOrder = [];
         room.currentTurnIdx = 0;
         if (room.actionCount !== undefined) room.actionCount = 0;
+
+        broadcastState(); // 승리 상태 즉시 업데이트
 
         setTimeout(() => {
             returnToQueue(gameType, finishedPlayers);
@@ -117,6 +122,8 @@ function nextPokerTurn(gameType) {
 
 // 🛠️ 블랙잭 전용 순차 무한 로테이션 턴 엔진
 function nextOfflineBlackjackTurn(room, gameType) {
+    if (!room || room.turnOrder.length === 0) return; // 💡수정: 안전 장치 추가
+
     const hasUnbetted = room.turnOrder.some(id => {
         const p = players.find(player => player.index === id);
         return p && p.betAmount === 0;
@@ -184,7 +191,7 @@ function nextTurn(gameType) {
     if (gameType === 'blackjack') {
         const room = gameRooms[gameType];
         nextOfflineBlackjackTurn(room, gameType);
-    } else {
+    } else if (gameRooms[gameType]) { // 💡수정: 다이스나 슬롯일 때 접근 방지
         nextPokerTurn(gameType);
     }
 }
@@ -195,7 +202,7 @@ app.post('/api/admin/change-player', (req, res) => {
     const player = players.find(p => p.index === parseInt(pNum));
 
     if (player) {
-        if (player.currentGame !== "none") {
+        if (player.currentGame !== "none" && waitingQueues[player.currentGame]) {
             waitingQueues[player.currentGame] = waitingQueues[player.currentGame].filter(id => id !== player.index);
         }
         player.name = newName || `플레이어 ${pNum}`;
@@ -264,7 +271,7 @@ app.post('/api/wallet/charge', (req, res) => {
     }
 });
 
-// 🛒 [번호 기반 간편 결제 API] (NFC UID 리더기 대체)
+// 🛒 [번호 기반 간편 결제 API]
 app.get('/api/pay/:pNum/:amount', (req, res) => {
     const pNum = parseInt(req.params.pNum);
     const cost = parseInt(req.params.amount);
@@ -293,7 +300,6 @@ io.on('connection', (socket) => {
     socket.on('request_balance', (data) => {
         const player = players.find(p => p.index === parseInt(data.pNum));
         if (player) {
-            // 체크인 상태면 테이블 칩(currentMoney), 아니면 지갑(walletMoney) 전송
             const balance = player.isCheckedIn ? player.currentMoney : player.walletMoney;
             socket.emit('respond_balance', { balance: balance, isCheckedIn: player.isCheckedIn });
         }
@@ -305,8 +311,8 @@ io.on('connection', (socket) => {
         if (!player) return;
 
         const betAmount = parseInt(data.betAmount);
-        const winAmount = parseInt(data.winAmount); // 얻은 총액 (배팅금 포함 반환금)
-        const netProfit = winAmount - betAmount; // 순이익
+        const winAmount = parseInt(data.winAmount); 
+        const netProfit = winAmount - betAmount; 
 
         if (player.isCheckedIn) {
             player.currentMoney += netProfit;
@@ -351,7 +357,8 @@ io.on('connection', (socket) => {
             player.betAmount = 0;
             player.isAllIn = false;
 
-            if (!waitingQueues[gameType].includes(player.index)) {
+            // 💡수정: 다이스와 슬롯도 에러없이 정상 배열 푸시
+            if (waitingQueues[gameType] && !waitingQueues[gameType].includes(player.index)) {
                 waitingQueues[gameType].push(player.index);
             }
             io.emit('log', `⏳ [테이블 입장] ${player.name}님이 ${gameType} 대기열에 입장하였습니다.`);
@@ -368,14 +375,17 @@ io.on('connection', (socket) => {
             
             player.isCheckedIn = false;
             player.status = "대기";
-            player.walletMoney += (player.currentMoney + player.betAmount); // 테이블 칩 전액 복구
+            player.walletMoney += (player.currentMoney + player.betAmount); 
             player.currentMoney = 0;
             player.betAmount = 0;
             player.isAllIn = false;
 
-            if (gameType !== "none") {
+            if (gameType !== "none" && waitingQueues[gameType]) {
                 waitingQueues[gameType] = waitingQueues[gameType].filter(id => id !== player.index);
-                gameRooms[gameType].turnOrder = gameRooms[gameType].turnOrder.filter(id => id !== player.index);
+                // 💡수정: 게임룸이 존재하는 게임(포커 등)에서만 턴을 제거함 (다이스/슬롯 에러 방지)
+                if (gameRooms[gameType]) {
+                    gameRooms[gameType].turnOrder = gameRooms[gameType].turnOrder.filter(id => id !== player.index);
+                }
             }
             player.currentGame = "none";
 
@@ -396,7 +406,7 @@ io.on('connection', (socket) => {
 
         const gameType = data.gameType || player.currentGame;
         const room = gameRooms[gameType];
-        if (!room) return;
+        if (!room) return; // 다이스나 슬롯이 이 이벤트를 탔을 경우 무시
 
         // ──────────────────────────────────────────
         // 🃏 [분기 1] 오프라인 블랙잭 조작 엔진
@@ -487,9 +497,12 @@ io.on('connection', (socket) => {
                 });
 
                 const finished = [...room.turnOrder];
+                
+                // 💡수정: 타이머가 돌기 전에 즉시 룸 데이터 초기화 (꼬임 방지)
                 room.currentBet = 0; 
                 room.turnOrder = []; 
                 room.actionCount = 0;
+                broadcastState(); // 화면 즉시 업데이트
 
                 setTimeout(() => {
                     returnToQueue(gameType, finished);
@@ -672,4 +685,4 @@ io.on('connection', (socket) => {
 
 // 🚀 포트 설정 및 서버 가동
 const PORT = process.env.PORT || 8000;
-http.listen(PORT, () => console.log(`🚀 번호 지정형 대기열 및 통합 게임 서버 가동 중 (Port: ${PORT})`));
+http.listen(PORT, () => console.log(`🚀 번호 지정형 통합 게임 서버 가동 중 (Port: ${PORT})`));
