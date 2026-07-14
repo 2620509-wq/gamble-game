@@ -273,7 +273,7 @@ app.post('/api/wallet/charge', (req, res) => {
 
 // 🛒 [번호 기반 간편 결제 API] (NFC UID 리더기 대체)
 app.get('/api/pay/:pNum/:amount', (req, res) => {
-    const pNum = '88:04:73:cb;
+    const pNum = '88:04:73:cb';
     const cost = parseInt(req.params.amount);
     if (isNaN(cost) || cost <= 0) {
         return res.send("INVALID_AMOUNT");
