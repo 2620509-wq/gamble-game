@@ -130,27 +130,23 @@
 
         const btnContainer = document.getElementById('dynamic-buttons');
         
-        // 🚀 초기 렌더링 시 버튼 그리기 및 온클릭 함수 매핑 보장
-        // 🚀 game.html의 버튼 생성 분기문 중 blackjack 분기 전면 교체
+        // 🚀 초기 렌더링 시 버튼 그리기 및 ID 일관성 완벽 고정
         if (gameType === 'blackjack') {
             document.getElementById('game-theme-header').innerText = "🃏 BLACKJACK ROOM";
-            btnContainer.style.gridTemplateColumns = "1fr"; // 베팅창 구역 공간 확보
+            btnContainer.style.gridTemplateColumns = "1fr"; 
             btnContainer.innerHTML = `
                 <div style="display: flex; gap: 8px; margin-bottom: 5px;">
                     <input type="number" id="bj-bet-input" placeholder="베팅할 칩 입력" 
                            style="flex: 1; height: 48px; border-radius: 8px; border: 2px solid #3b82f6; background: #1e293b; color: white; padding: 0 12px; font-size: 15px; font-weight: bold;">
-                    <button style="width: 80px; height: 48px; background: #3b82f6; border: none; border-radius: 8px; color: white; font-weight: bold;" 
+                    <button id="bj-bet-btn" style="width: 80px; height: 48px; background: #3b82f6; border: none; border-radius: 8px; color: white; font-weight: bold;" 
                             onclick="sendBjBet()">베팅</button>
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; width: 100%;">
-                    <button class="btn-hit" onclick="sendAction('hit')">히트 (Hit)</button>
-                    <button class="btn-stay" onclick="sendAction('stay')">스테이 (Stay)</button>
+                    <button id="bj-hit-btn" class="btn-hit" onclick="sendAction('hit')">히트 (Hit)</button>
+                    <button id="bj-stay-btn" class="btn-stay" onclick="sendAction('stay')">스테이 (Stay)</button>
                 </div>
             `;
-        }
-
-        // 스크립트 최하단에 블랙잭 수동 베팅 전송 전용 함수 배치
-         else {
+        } else {
             document.getElementById('game-theme-header').innerText = gameType === 'holdem' ? "🎴 TEXAS HOLDEM" : "👑 INDIAN POKER";
             document.getElementById('bet-board-ui').style.display = 'flex'; 
             btnContainer.innerHTML = `
@@ -183,30 +179,94 @@
                     document.getElementById('game-info-line').innerHTML = `내가 이번 판에 낸 판돈: <span style="color:#f59e0b; font-weight:bold;">${me.betAmount.toLocaleString()}</span> 칩`;
                 } else {
                     document.getElementById('game-info-line').innerHTML = `오프라인 카드를 확인하고 액션을 누르세요.`;
+
+                    // 🃏 [블랙잭 베팅 입력 영역 인터랙션 동기화]
+                    const bjBetInput = document.getElementById('bj-bet-input'); 
+                    const bjBetBtn = document.getElementById('bj-bet-btn');     
+
+                    if (bjBetInput && bjBetBtn) {
+                        // 베팅 금액이 들어가 있으면 베팅창은 계속 잠금 처리
+                        if (me.betAmount > 0) {
+                            bjBetInput.disabled = true;
+                            bjBetBtn.disabled = true;
+                            bjBetBtn.innerText = "베팅 완료";
+                        } else {
+                            bjBetInput.disabled = false;
+                            bjBetBtn.disabled = false;
+                            bjBetBtn.innerText = "베팅";
+                        }
+                    }
                 }
                 
                 document.getElementById('player-status').innerText = me.status;
 
-                // 🔒 오직 상단 조작 액션 버튼들만 활성/비활성 처리 (퇴장 버튼 영향 안 가게 격리)
+                // 🔒 조작 액션 버튼 그룹 권한 실시간 렌더링
                 const gameActions = document.querySelectorAll('#dynamic-buttons button');
+                
                 if (me.status === "플레이 중") {
                     gameActions.forEach(btn => { 
-                        btn.style.opacity = "1"; 
-                        btn.style.pointerEvents = "auto"; 
+                        if (btn.id !== "bj-bet-btn") {
+                            // 🌟 [핵심 반영] 아직 베팅 금액이 0인 최초 베팅 턴 상태라면, 히트와 스테이 버튼을 강제로 비활성화합니다!
+                            if (gameType === 'blackjack' && me.betAmount === 0) {
+                                btn.style.opacity = "0.3"; 
+                                btn.style.pointerEvents = "none"; 
+                            } else {
+                                // 전원 베팅이 끝난 뒤 돌아온 진짜 플레이 턴일 때는 버튼 활성화
+                                btn.style.opacity = "1"; 
+                                btn.style.pointerEvents = "auto"; 
+                            }
+                        }
                     });
                 } else {
+                    // 내 턴이 아니거나("순서 대기"), 최종 "스테이 완료"가 되면 즉시 조작을 차단합니다.
                     gameActions.forEach(btn => { 
-                        btn.style.opacity = "0.3"; 
-                        btn.style.pointerEvents = "none"; 
+                        if (btn.id !== "bj-bet-btn") {
+                            btn.style.opacity = "0.3"; 
+                            btn.style.pointerEvents = "none"; 
+                        }
                     });
                 }
             }
         });
 
-        socket.on('error_msg', (data) => { alert(data.msg); });
+        socket.on('error_msg', (data) => { 
+            alert(data.msg); 
+            if (gameType === 'blackjack') {
+                const bjBetInput = document.getElementById('bj-bet-input');
+                const bjBetBtn = document.getElementById('bj-bet-btn');
+                if (bjBetInput && bjBetBtn) {
+                    bjBetInput.disabled = false;
+                    bjBetBtn.disabled = false;
+                    bjBetBtn.innerText = "베팅";
+                }
+            }
+        });
+
+        // 🎲 블랙잭 수동 베팅 전송 전용 함수 (ID 완벽 수정)
         function sendBjBet() {
-            const amt = document.getElementById('bj-bet-input').value;
-            socket.emit('player_action', { pNum: pNum, actionType: 'bj_bet', amount: amt, gameType: 'blackjack' });
+            const bjBetInput = document.getElementById('bj-bet-input');
+            const bjBetBtn = document.getElementById('bj-bet-btn');
+            
+            if (!bjBetInput || !bjBetBtn) return;
+            
+            const amount = parseInt(bjBetInput.value);
+
+            if (isNaN(amount) || amount <= 0) {
+                alert("올바른 베팅 금액을 입력해 주세요.");
+                return;
+            }
+
+            // 🔒 중복 베팅 연타 완벽 방어
+            bjBetInput.disabled = true;
+            bjBetBtn.disabled = true;
+            bjBetBtn.innerText = "전송 중...";
+
+            socket.emit('player_action', {
+                pNum: pNum,
+                gameType: 'blackjack',
+                actionType: 'bj_bet',
+                amount: amount
+            });
         }
     </script>
 </body>
