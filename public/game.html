@@ -46,7 +46,7 @@
             height: 58px; border: none; border-radius: 12px; font-size: 16px; 
             font-weight: bold; color: white; cursor: pointer; 
             transition: transform 0.1s, opacity 0.2s;
-            position: relative; z-index: 5; /* 🌟 터치 이벤트가 다른 레이어에 묻히지 않도록 최상단 고정 */
+            position: relative; z-index: 5; /* 🌟 터치 이벤트 최상단 고정 */
         }
         .btn-group button:active { transform: scale(0.95); }
         
@@ -158,7 +158,8 @@
         }
 
         function openLeaveModal() { document.getElementById('leaveModal').classList.add('active'); }
-        function closeLeaveModal() { document.getElementById('leaveModal').classList.remove('remove'); document.getElementById('leaveModal').classList.remove('active'); }
+        // 🔧 classList.remove('remove') 오타 및 중복 제거 부분을 정돈했습니다.
+        function closeLeaveModal() { document.getElementById('leaveModal').classList.remove('active'); }
         function confirmLeave() { socket.emit('nfc_table_checkout', { pNum: pNum }); setTimeout(() => { window.location.href = `/wallet/${pNum}`; }, 250); }
 
         function sendAction(type) {
