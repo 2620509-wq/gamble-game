@@ -294,13 +294,7 @@ app.get('/api/pay/:pNum/:amount', (req, res) => {
 });
 
 // 🔌 소켓 서버 이벤트 리스너 루프
-io.on('connection', (socket) => {
-    
-    // [공통] 플레이어가 페이지 로드 시 잔액을 요청할 때
-    // ⭕ [서버 수정안] 최신 상태 동기화 후 전송
-socket.on('request_balance', async (data) => {
-  const { pNum } = data;
-  
+
   // 1. [핵심] DB나 원장에서 플레이어의 가장 최신 돈 정보를 먼저 긁어와서 업데이트합니다.
   // (예: 현재 테이블 칩 정보나 지갑 원장 잔액 최신화 함수 호출)
   io.on('connection', (socket) => {
