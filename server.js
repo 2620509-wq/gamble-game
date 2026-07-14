@@ -303,17 +303,24 @@ socket.on('request_balance', async (data) => {
   
   // 1. [핵심] DB나 원장에서 플레이어의 가장 최신 돈 정보를 먼저 긁어와서 업데이트합니다.
   // (예: 현재 테이블 칩 정보나 지갑 원장 잔액 최신화 함수 호출)
-  await refreshPlayerBalanceFromDB(pNum); 
+  io.on('connection', (socket) => {
+    
+    // [공통] 플레이어가 페이지 로드 시 잔액을 요청할 때
+    socket.on('request_balance', (data) => {
+        const pNum = parseInt(data.pNum);
+        
+        // 🎯 [수정] players[pNum] 대신 정확히 index가 일치하는 플레이어를 탐색합니다.
+        const player = players.find(p => p.index === pNum);
+        if (!player) return;
 
-  const player = players[pNum];
-  if (!player) return;
+        // 🎯 [수정] 정의되지 않은 외부 DB 조회 함수(refreshPlayerBalanceFromDB)를 제거하고,
+        // 서버 메모리에 저장된 최신 데이터를 즉시 클라이언트로 전송합니다.
+        socket.emit('respond_balance', {
+            balance: player.isCheckedIn ? player.currentMoney : player.walletMoney,
+            isCheckedIn: player.isCheckedIn
+        });
+    });
 
-  // 2. 완벽히 업데이트가 끝난 최종 '진짜 잔액'을 클라이언트에 내려줍니다.
-  socket.emit('respond_balance', {
-    balance: player.isCheckedIn ? player.currentMoney : player.walletMoney,
-    isCheckedIn: player.isCheckedIn
-  });
-});
     // 🎲 [독립 다이스 게임 전용 연동]
     socket.on('dice_bet_result', (data) => {
         const player = players.find(p => p.index === parseInt(data.pNum));
