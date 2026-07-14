@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CASINO</title>
+  <script src="/socket.io/socket.io.js"></script>
+
+  <style>
+    :root {
+      --dark: #061812;
+      --panel: #08281e;
+      --felt: #0d4935;
+      --felt-light: #126046;
+      --gold: #d8a23a;
+      --light-gold: #f5d078;
+      --cream: #fff5db;
+      --muted: #9bb8a8;
+      --line: rgba(225, 179, 78, 0.35);
+      --red: #e2766a;
+      --green: #5be092;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      color: var(--cream);
+      font-family: Arial, "Apple SD Gothic Neo", sans-serif;
+      background:
+        radial-gradient(circle at 75% 30%, rgba(26, 105, 74, 0.55), transparent 60%),
+        radial-gradient(circle at 25% 75%, rgba(13, 73, 53, 0.8), transparent 70%),
+        var(--dark);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 12px;
+    }
+
+    .casino-table {
+      width: 100%;
+      max-width: 480px;
+      background: var(--panel);
+      border: 8px solid var(--gold);
+      border-radius: 32px;
+      box-shadow: 
+        0 16px 40px rgba(0,0,0,0.7),
+        inset 0 0 24px rgba(0,0,0,0.5);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+    }
+
+    .casino-table::before {
+      content: "";
+      position: absolute;
+      top: 4px; left: 4px; right: 4px; bottom: 4px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      pointer-events: none;
+    }
+
+    .header-panel {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(0,0,0,0.25);
+      padding: 10px 16px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+    }
+
+    .title {
+      font-weight: bold;
+      font-size: 14px;
+      letter-spacing: 2px;
+      color: var(--light-gold);
+      margin: 0;
+    }
+
+    .balance-box {
+      text-align: right;
+    }
+
+    .balance-label {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .balance-value {
+      font-size: 18px;
+      font-weight: bold;
+      color: var(--green);
+    }
+
+    .display-area {
+      background: var(--felt);
+      border: 2px solid var(--line);
+      border-radius: 18px;
+      height: 140px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+      box-shadow: inset 0 8px 16px rgba(0,0,0,0.4);
+    }
+
+    .dice-container {
+      display: flex;
+      gap: 24px;
+    }
+
+    .dice {
+      width: 56px;
+      height: 56px;
+      background: var(--cream);
+      border-radius: 12px;
+      position: relative;
+      box-shadow: 
+        0 6px 0 #d9cbab,
+        0 10px 20px rgba(0,0,0,0.4);
+      transition: transform 0.1s ease;
+    }
+
+    .pip {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      background: #1c2622;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+    .dice:first-child .pip { background: #cc3333; }
+
+    .bet-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .bet-button {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 6px;
+      color: var(--cream);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s ease;
+    }
+
+    .bet-button:hover {
+      background: rgba(225, 179, 78, 0.1);
+    }
+
+    .bet-button.active {
+      background: var(--gold);
+      color: var(--dark);
+      border-color: var(--light-gold);
+      box-shadow: 0 0 12px rgba(216, 162, 58, 0.4);
+    }
+
+    .bet-button.active .bet-name {
+      color: var(--dark);
+    }
+
+    .bet-button.active .bet-payout {
+      color: rgba(6, 24, 18, 0.7);
+    }
+
+    .bet-name {
+      font-size: 13px;
+      font-weight: bold;
+      color: var(--light-gold);
+    }
+
+    .bet-payout {
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    .control-panel {
+      background: rgba(0,0,0,0.15);
+      border-radius: 16px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .input-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .wager-input-wrapper {
+      flex: 1;
+      position: relative;
+    }
+
+    .wager-input {
+      width: 100%;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      color: var(--green);
+      font-size: 15px;
+      font-weight: bold;
+      outline: none;
+      text-align: center;
+    }
+
+    .nav-button {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(225,179,78,0.4);
+      color: var(--cream);
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: bold;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .nav-button:hover { background: rgba(255,255,255,0.15); }
+
+    .quick-buttons {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+
+    .quick-btn {
+      background: rgba(0,0,0,0.2);
+      border: 1px solid rgba(225,179,78,0.2);
+      border-radius: 8px;
+      padding: 8px 4px;
+      color: var(--muted);
+      font-size: 11px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .quick-btn:hover { color: var(--cream); border-color: var(--line); }
+
+    .roll-button {
+      background: linear-gradient(180deg, #e6b44a, var(--gold));
+      border: none;
+      border-radius: 14px;
+      padding: 14px;
+      color: var(--dark);
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      letter-spacing: 1px;
+    }
+
+    .roll-button:hover { background: linear-gradient(180deg, #f5d078, #e6b44a); }
+    .roll-button:disabled { background: #33443f; color: #556661; cursor: not-allowed; box-shadow: none; }
+
+    .summary-text {
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+      min-height: 16px;
+    }
+
+    #error-message {
+      text-align: center;
+      font-size: 13px;
+      font-weight: bold;
+      min-height: 18px;
+    }
+
+    #sum-group {
+      grid-column: span 3;
+      background: rgba(0,0,0,0.2);
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(225,179,78,0.15);
+    }
+
+    .sum-label {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-align: center;
+    }
+
+    .sum-select {
+      width: 100%;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: var(--light-gold);
+      padding: 6px;
+      border-radius: 6px;
+      outline: none;
+      font-weight: bold;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="casino-table">
+    <div class="header-panel">
+      <h1 class="title">DICE STADIUM</h1>
+      <div class="balance-box">
+        <div class="balance-label">balance</div>
+        <div class="balance-value">100,000</div>
+      </div>
+    </div>
+
+    <div class="display-area">
+      <div class="dice-container">
+        <div class="dice" id="dice1"></div>
+        <div class="dice" id="dice2"></div>
+        <div class="dice" id="dice3"></div>
+      </div>
+    </div>
+
+    <div class="summary-text" id="summary-view">배팅을 선택하고 주사위를 굴리세요.</div>
+    <div id="error-message"></div>
+
+    <div class="bet-grid">
+      <button class="bet-button active" data-kind="big" data-label="Big (11-17)">
+        <span class="bet-name">BIG</span>
+        <span class="bet-payout">1:1</span>
+      </button>
+      <button class="bet-button" data-kind="small" data-label="Small (4-10)">
+        <span class="bet-name">SMALL</span>
+        <span class="bet-payout">1:1</span>
+      </button>
+      <button class="bet-button" data-kind="triple" data-label="Any Triple">
+        <span class="bet-name">TRIPLE</span>
+        <span class="bet-payout">30:1</span>
+      </button>
+
+      <div id="sum-group" style="display: none;">
+        <div class="sum-label">단일 합산 타겟 숫자 선택</div>
+        <select id="sum-select" class="sum-select"></select>
+      </div>
+    </div>
+
+    <div class="control-panel">
+      <div class="input-row">
+        <button class="nav-button" id="minus-button">−</button>
+        <div class="wager-input-wrapper">
+          <input type="number" class="wager-input" id="bet-amount" value="1000" min="1000" step="1000">
+        </div>
+        <button class="nav-button" id="plus-button">+</button>
+      </div>
+
+      <div class="quick-buttons">
+        <button class="quick-btn" data-amount="1000">1K</button>
+        <button class="quick-btn" data-amount="5000">5K</button>
+        <button class="quick-btn" data-amount="10000">10K</button>
+        <button class="quick-btn" id="all-in">ALL</button>
+      </div>
+    </div>
+
+    <button class="roll-button" id="roll-trigger">DICE ROLL</button>
+  </div>
+
+  <script>
+    const pipPositions = {
+      1: [[50, 50]],
+      2: [[25, 25], [75, 75]],
+      3: [[25, 25], [50, 50], [75, 75]],
+      4: [[25, 25], [25, 75], [75, 25], [75, 75]],
+      5: [[25, 25], [25, 75], [50, 50], [75, 25], [75, 75]],
+      6: [[25, 25], [25, 50], [25, 75], [75, 25], [75, 50], [75, 75]]
+    };
+
+    const sumMultipliers = {
+      4: 60, 5: 30, 6: 18, 7: 12, 8: 8, 9: 7, 10: 6,
+      11: 6, 12: 7, 13: 8, 14: 12, 15: 18, 16: 30, 17: 60
+    };
+
+    // 🔌 [기능 추가] 웹소켓 연결 및 플레이어 인덱스 추출
+    const pathSegments = window.location.pathname.split('/');
+    const pNum = parseInt(pathSegments[pathSegments.length - 1]); 
+    const socket = io();
+
+    let balance = 0; // 초기 자산은 0으로 설정 후 서버 원장 데이터를 동기화합니다.
+    let isUserCheckedIn = false; // 플레이어의 테이블 체크인 여부 저장용 변수
+    let betKind = "big";
+    let betLabel = "Big (11-17)";
+    let targetSum = 4;
+    let rolling = false;
+
+    const balanceElement = document.querySelector(".balance-value");
+    const summaryElement = document.querySelector("#summary-view");
+    const errorElement = document.querySelector("#error-message");
+    const betAmountInput = document.querySelector("#bet-amount");
+    const sumGroup = document.querySelector("#sum-group");
+    const sumSelect = document.querySelector("#sum-select");
+    const rollButton = document.querySelector("#roll-trigger");
+
+    function drawDice(diceId, value) {
+      const diceEl = document.getElementById(diceId);
+      diceEl.innerHTML = "";
+      if (!pipPositions[value]) return;
+      pipPositions[value].forEach(pos => {
+        const pip = document.createElement("div");
+        pip.className = "pip";
+        pip.style.top = pos[0] + "%";
+        pip.style.left = pos[1] + "%";
+        diceEl.appendChild(pip);
+      });
+    }
+
+    function getBetAmount() {
+      return Math.max(1000, Number(betAmountInput.value) || 1000);
+    }
+
+    function setBetAmount(val) {
+      if (rolling) return;
+      betAmountInput.value = Math.max(1000, val);
+      updateScreen();
+    }
+
+    function updateScreen() {
+      // 🔌 [기능 추가] 서버 데이터 상태에 맞춰서 칩 또는 원 표시 자동 매칭
+      balanceElement.textContent = balance.toLocaleString() + (isUserCheckedIn ? " 칩" : " 원");
+      const wager = getBetAmount();
+
+      if (betKind === "sum") {
+        summaryElement.textContent = `선택한 배팅: [합계 ${targetSum}] (배당 1:${sumMultipliers[targetSum]}) / 배팅액: ${wager.toLocaleString()}`;
+      } else {
+        summaryElement.textContent = `선택한 배팅: [${betLabel}] / 배팅액: ${wager.toLocaleString()}`;
+      }
+    }
+
+    // 🔌 [기능 추가] 서버 원장 잔액 동기화 요청 함수
+    function syncBalance() {
+      if (!isNaN(pNum)) {
+        socket.emit('request_balance', { pNum: pNum });
+      }
+    }
+
+    // 🔌 [기능 추가] 서버로부터 전달받은 최신 자산 원장 데이터를 반영
+    socket.on('respond_balance', (data) => {
+      balance = data.balance;
+      isUserCheckedIn = data.isCheckedIn;
+      updateScreen();
+    });
+
+    // 🔌 [기능 추가] 첫 접속 및 외부 정산/카드 결제/관리자 충전 신호(game_update) 발생 시 실시간 연동
+    syncBalance();
+    socket.on('game_update', () => {
+      syncBalance();
+    });
+
+    rollButton.addEventListener("click", () => {
+      if (rolling) return;
+      const wager = getBetAmount();
+
+      if (wager > balance) {
+        errorElement.style.color = "var(--red)";
+        errorElement.textContent = "보유 자산이 부족합니다.";
+        return;
+      }
+
+      errorElement.textContent = "";
+      rolling = true;
+      rollButton.disabled = true;
+
+      let cycles = 0;
+      const interval = setInterval(() => {
+        drawDice("dice1", Math.floor(Math.random() * 6) + 1);
+        drawDice("dice2", Math.floor(Math.random() * 6) + 1);
+        drawDice("dice3", Math.floor(Math.random() * 6) + 1);
+        cycles++;
+        if (cycles > 12) {
+          clearInterval(interval);
+          executeRealRoll(wager);
+        }
+      }, 70);
+    });
+
+    function executeRealRoll(wager) {
+      const d1 = Math.floor(Math.random() * 6) + 1;
+      const d2 = Math.floor(Math.random() * 6) + 1;
+      const d3 = Math.floor(Math.random() * 6) + 1;
+
+      drawDice("dice1", d1);
+      drawDice("dice2", d2);
+      drawDice("dice3", d3);
+
+      const sum = d1 + d2 + d3;
+      const isTriple = (d1 === d2 && d2 === d3);
+
+      let won = false;
+      let payoutRate = 0;
+
+      if (betKind === "triple") {
+        if (isTriple) { won = true; payoutRate = 30; }
+      } else if (!isTriple) {
+        if (betKind === "small" && sum >= 4 && sum <= 10) { won = true; payoutRate = 1; }
+        else if (betKind === "big" && sum >= 11 && sum <= 17) { won = true; payoutRate = 1; }
+        else if (betKind === "sum" && sum === targetSum) { won = true; payoutRate = sumMultipliers[targetSum] || 0; }
+      }
+
+      const profit = won ? (wager * payoutRate) : 0;
+      showResult([d1, d2, d3], sum, won, profit, wager);
+
+      rolling = false;
+      rollButton.disabled = false;
+    }
+
+    function showResult(finalDice, sum, won, profit, wager) {
+      summaryElement.textContent = `결과: [${finalDice.join(", ")}] = 합계 ${sum}`;
+      
+      if (won) {
+        errorElement.style.color = "var(--green)";
+        errorElement.textContent = `🎉 승리! +${profit.toLocaleString()}`;
+      } else {
+        errorElement.style.color = "var(--red)";
+        errorElement.textContent = "❌ 패배...";
+      }
+
+      // 🔌 [기능 추가] 정산 결과를 백엔드 서버 소켓으로 실시간 전송 (서버 DB/메모리 원장 반영)
+      const winAmount = won ? (wager + profit) : 0;
+      socket.emit('dice_bet_result', {
+        pNum: pNum,
+        betAmount: wager,
+        winAmount: winAmount
+      });
+
+      updateScreen();
+    }
+
+    // 초기 생성 및 바인딩
+    drawDice("dice1", 1); drawDice("dice2", 3); drawDice("dice3", 5);
+    for (let i = 4; i <= 17; i++) {
+      const option = document.createElement("option");
+      option.value = i; option.textContent = `합계 ${i} (배당 1:${sumMultipliers[i]})`;
+      if (i === 4) option.selected = true;
+      sumSelect.appendChild(option);
+    }
+
+    document.querySelectorAll(".bet-button").forEach(button => {
+      button.addEventListener("click", () => {
+        if (rolling) return;
+        document.querySelectorAll(".bet-button").forEach(item => item.classList.remove("active"));
+        button.classList.add("active");
+        betKind = button.dataset.kind;
+        betLabel = button.dataset.label;
+        sumGroup.style.display = betKind === "sum" ? "block" : "none";
+        errorElement.textContent = "";
+        updateScreen();
+      });
+    });
+
+    sumSelect.addEventListener("change", () => {
+      targetSum = Number(sumSelect.value);
+      updateScreen();
+    });
+
+    betAmountInput.addEventListener("input", updateScreen);
+    document.querySelector("#minus-button").addEventListener("click", () => setBetAmount(getBetAmount() - 1000));
+    document.querySelector("#plus-button").addEventListener("click", () => setBetAmount(getBetAmount() + 1000));
+    document.querySelectorAll(".quick-buttons [data-amount]").forEach(button => {
+      button.addEventListener("click", () => setBetAmount(Number(button.dataset.amount)));
+    });
+    document.querySelector("#all-in").addEventListener("click", () => setBetAmount(balance));
+  </script>
+</body>
+</html>
