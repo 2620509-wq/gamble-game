@@ -122,27 +122,78 @@ function nextPokerTurn(gameType) {
     broadcastState();
 }
 
-// 🎯 블랙잭 전용 다음 턴 제어 알고리즘     
+// 🛠️ 블랙잭 전용 순차 무한 로테이션 턴 엔진
 function nextOfflineBlackjackTurn(room, gameType) {
-    const nextPlayerId = room.turnOrder.find(id => {
+    // [1단계] 게임 시작 직후: 아직 베팅을 단 한 번도 안 한 최초 "순서 대기" 상태의 플레이어가 있는지 찾기
+    // (모든 플레이어가 베팅을 마칠 때까지 한 명씩 순서대로 깨우는 영역)
+    const hasUnbetted = room.turnOrder.some(id => {
         const p = players.find(player => player.index === id);
-        return p && p.status === "순서 대기";
+        return p && p.betAmount === 0; // 아직 베팅 칩이 0인 유저가 있다면 베팅 페이즈 진행 중
     });
 
-    if (nextPlayerId) {
-        const nextPlayer = players.find(p => p.index === nextPlayerId);
-        nextPlayer.status = "플레이 중";
-        io.emit('log', `🎲 [블랙잭] 다음 차례: ${nextPlayer.name} (${nextPlayerId}번 시트)`);
-    } else {
-        io.emit('log', `🏁 [블랙잭] 모든 플레이어의 선택이 끝났습니다! 딜러님은 최종 스크린을 보고 개별 결과를 입력해 주세요.`);
-        room.turnOrder.forEach(id => {
-            const p = players.find(player => player.index === id);
-            if(p && p.status === "플레이 중") p.status = "선택 완료";
-        });
+    if (hasUnbetted) {
+        room.currentTurnIdx = (room.currentTurnIdx + 1) % room.turnOrder.length;
+        let attempts = 0;
+        while (attempts < room.turnOrder.length) {
+            const nextId = room.turnOrder[room.currentTurnIdx];
+            const p = players.find(player => player.index === nextId);
+            
+            if (p && p.betAmount === 0) {
+                // 기존 '플레이 중'이었던 유저들의 상태를 '순서 대기'로 정리하고 다음 베팅자 오픈
+                players.forEach(pl => { if(pl.currentGame === gameType && pl.status === "플레이 중") pl.status = "순서 대기"; });
+                p.status = "플레이 중";
+                io.emit('log', `🎲 [블랙잭] 다음 베팅 차례: ${p.name} (${nextId}번 시트)`);
+                broadcastState();
+                return;
+            }
+            room.currentTurnIdx = (room.currentTurnIdx + 1) % room.turnOrder.length;
+            attempts++;
+        }
     }
+
+    // [2단계] 베팅이 전원 완료된 직후: 플레이 페이즈(히트/스테이 조작 라운드)로의 최초 전환 검사
+    const allBetted = room.turnOrder.every(id => {
+        const p = players.find(player => player.index === id);
+        return p && p.status === "베팅 완료";
+    });
+
+    if (allBetted) {
+        io.emit('log', `🃏 [블랙잭] 전원 베팅 완료! 플레이를 시작합니다. 1번 플레이어부터 순서대로 액션을 진행합니다.`);
+        room.currentTurnIdx = 0; // 1번 유저 시트로 인덱스 고정
+        room.turnOrder.forEach((pId, idx) => {
+            const p = players.find(player => player.index === pId);
+            if (p) {
+                p.status = (idx === 0) ? "플레이 중" : "순서 대기";
+            }
+        });
+        broadcastState();
+        return;
+    }
+
+    // [3단계] 히트/스테이 진행 중 무한 턴 순환 로직
+    // 현재 턴 인덱스 다음부터 시작해서 "스테이 완료"가 아닌 ("순서 대기" 상태인) 사람을 찾아 턴을 줍니다.
+    let searchAttempts = 0;
+    while (searchAttempts < room.turnOrder.length) {
+        room.currentTurnIdx = (room.currentTurnIdx + 1) % room.turnOrder.length;
+        const nextActionId = room.turnOrder[room.currentTurnIdx];
+        const p = players.find(player => player.index === nextActionId);
+
+        // 살아있고 스테이를 선언하지 않은 유저를 발견하면 즉시 턴 부여!
+        if (p && p.status === "순서 대기") {
+            // 다른 사람 턴 잠그고 타겟 유저만 활성화
+            players.forEach(pl => { if(pl.currentGame === gameType && pl.status === "플레이 중") pl.status = "순서 대기"; });
+            p.status = "플레이 중";
+            io.emit('log', `🎲 [블랙잭] 다음 턴 순환 차례: ${p.name} (${nextActionId}번 시트)`);
+            broadcastState();
+            return;
+        }
+        searchAttempts++;
+    }
+
+    // [4단계] 더 이상 "순서 대기" 상태인 유저가 없을 때 (전원 스테이 완료 시)
+    io.emit('log', `🏁 [블랙잭] 모든 플레이어가 최종 스테이를 완료했습니다! 오프라인 정산을 진행해 주세요.`);
     broadcastState();
 }
-
 // 🎯 [순서 관리 엔진] 범용 턴 토서
 function nextTurn(gameType) {
     if (gameType === 'blackjack') {
@@ -316,29 +367,47 @@ io.on('connection', (socket) => {
         // 🃏 [분기 1] 오프라인 블랙잭 조작 엔진
         // ──────────────────────────────────────────
         if (gameType === 'blackjack') {
-            if (data.actionType === 'bj_bet') {
-                const betInput = parseInt(data.amount);
-                if (isNaN(betInput) || betInput <= 0 || betInput > player.currentMoney) {
-                    socket.emit('error_msg', { msg: "보유 칩 내에서 올바른 금액을 베팅하세요." });
-                    return;
-                }
-                player.currentMoney -= betInput;
-                player.betAmount = betInput; 
-                room.pot += betInput;
-                io.emit('log', `💰 [블랙잭] ${player.name}님이 ${betInput.toLocaleString()}칩을 베팅했습니다.`);
-                broadcastState();
+        // 💰 1. 베팅 단계: 베팅 후 즉시 다음 사람에게 턴을 넘깁니다.
+        if (data.actionType === 'bj_bet') {
+            const betInput = parseInt(data.amount);
+            if (isNaN(betInput) || betInput <= 0 || betInput > player.currentMoney) {
+                socket.emit('error_msg', { msg: "보유 칩 내에서 올바른 금액을 베팅하세요." });
+                return;
             }
-            else if (data.actionType === 'hit') {
-                io.emit('log', `🎲 [블랙잭] ${player.name}님이 [히트]를 요청했습니다.`);
-                broadcastState();
-            } 
-            else if (data.actionType === 'stay') {
-                player.status = "스테이 완료";
-                io.emit('log', `🔒 [블랙잭] ${player.name}님이 [스테이]를 확정했습니다.`);
-                nextOfflineBlackjackTurn(room, gameType);
-            }
+            player.currentMoney -= betInput;
+            player.betAmount = betInput; 
+            room.pot += betInput;
+            
+            player.status = "베팅 완료";
+            io.emit('log', `💰 [블랙잭] ${player.name}님이 ${betInput.toLocaleString()}칩 베팅 완료.`);
+            
+            // 다음 사람 베팅을 위해 턴 패스
+            nextOfflineBlackjackTurn(room, gameType);
             return;
         }
+
+        // 🎲 2. 히트(Hit) 처리: 히트를 누르면 즉시 다음 사람에게 턴을 넘깁니다.
+        // 상태를 "순서 대기"로 돌려놓기 때문에 다음 바퀴에 턴이 또 돌아옵니다!
+        if (data.actionType === 'hit') {
+            player.status = "순서 대기"; 
+            io.emit('log', `🎲 [블랙잭] ${player.name}님이 [히트]를 요청했습니다. (다음 바퀴에 또 참여 가능)`);
+            
+            // 히트 후 즉시 다음 사람에게 턴을 넘깁니다.
+            nextOfflineBlackjackTurn(room, gameType);
+            return;
+        } 
+
+        // 🔒 3. 스테이(Stay) 처리: 스테이를 누르면 "스테이 완료"로 고정되어 다음 바퀴부터 스킵됩니다.
+        if (data.actionType === 'stay') {
+            player.status = "스테이 완료"; 
+            io.emit('log', `🔒 [블랙잭] ${player.name}님이 [스테이]를 선언하여 이번 라운드를 마쳤습니다.`);
+            
+            // 스테이 후 즉시 다음 사람에게 턴을 넘깁니다.
+            nextOfflineBlackjackTurn(room, gameType);
+            return;
+        }
+        return;
+    }
 
         // ──────────────────────────────────────────
         // 🎴 [분기 2] 포커 / 인디안 포커 베팅 엔진
