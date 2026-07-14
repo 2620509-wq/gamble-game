@@ -19,6 +19,12 @@ let players = Array.from({ length: 15 }, (_, i) => ({
     currentGame: "none",
     isAllIn: false 
 }));
+const rfidCardUIDs = [
+    "88:04:b9:c8", "88:04:76:cb", "88:04:75:cb", 
+    "88:04:74:cb", "88:04:73:cb", "88:04:99:c5", 
+    "88:04:98:c5", "88:04:97:c5", "88:04:a3:c5", 
+    "88:04:a2:c5", "88:04:bf:c8", "88:04:be:c8"
+];
 
 // 🎯 게임장별 구조체
 let waitingQueues = { blackjack: [], holdem: [], indian: [] };
@@ -273,7 +279,7 @@ app.post('/api/wallet/charge', (req, res) => {
 
 // 🛒 [번호 기반 간편 결제 API] (NFC UID 리더기 대체)
 app.get('/api/pay/:pNum/:amount', (req, res) => {
-    const pNum = '88:04:73:cb';
+    const pNum = parseInt(req.params.pNum);;
     const cost = parseInt(req.params.amount);
     if (isNaN(cost) || cost <= 0) {
         return res.send("INVALID_AMOUNT");
