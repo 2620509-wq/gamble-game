@@ -17,7 +17,7 @@ const rfidCardUIDs = [
 let players = Array.from({ length: 15 }, (_, i) => ({
     index: i + 1,
     // rfidCardUIDs 배열에 값이 있으면 넣고, 13~15번처럼 모자라면 기본값 적용
-    uid: rfidCardUIDs[i] ? rfidCardUIDs[i].toLowerCase() : `NFC_CARD_${i + 1}`, 
+    cardUid: rfidCardUIDs[i] ? rfidCardUIDs[i].toLowerCase() : `NFC_CARD_${i + 1}`, 
     name: `대기자 ${i + 1}`,
     walletMoney: 100000, 
     currentMoney: 0,    
