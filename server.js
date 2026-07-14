@@ -8,7 +8,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // 🎯 플레이어 기본 데이터 구조 (NFC UID 제거, 번호 기반 시스템)
-let players = Array.from({ length: 12 }, (_, i) => ({
+let players = Array.from({ length: 15 }, (_, i) => ({
     index: i + 1,
     name: `대기자 ${i + 1}`,
     walletMoney: 100000, // 기본 지갑 금액 초기화
