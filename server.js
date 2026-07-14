@@ -7,24 +7,26 @@ const path = require('path');
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 🎯 플레이어 기본 데이터 구조 (NFC UID 제거, 번호 기반 시스템)
-let players = Array.from({ length: 15 }, (_, i) => ({
-    index: i + 1,
-    name: `대기자 ${i + 1}`,
-    walletMoney: 100000, // 기본 지갑 금액 초기화
-    currentMoney: 0,    
-    betAmount: 0,       
-    isCheckedIn: false, 
-    status: "대기",     
-    currentGame: "none",
-    isAllIn: false 
-}));
+
 const rfidCardUIDs = [
     "88:04:b9:c8", "88:04:76:cb", "88:04:75:cb", 
     "88:04:74:cb", "88:04:73:cb", "88:04:99:c5", 
     "88:04:98:c5", "88:04:97:c5", "88:04:a3:c5", 
     "88:04:a2:c5", "88:04:bf:c8", "88:04:be:c8"
 ];
+let players = Array.from({ length: 15 }, (_, i) => ({
+    index: i + 1,
+    // rfidCardUIDs 배열에 값이 있으면 넣고, 13~15번처럼 모자라면 기본값 적용
+    uid: rfidCardUIDs[i] ? rfidCardUIDs[i].toLowerCase() : `NFC_CARD_${i + 1}`, 
+    name: `대기자 ${i + 1}`,
+    walletMoney: 100000, 
+    currentMoney: 0,    
+    betAmount: 0,       
+    isCheckedIn: false, 
+    status: "대기",     
+    currentGame: "none",
+    isAllIn: false 
+}));
 
 // 🎯 게임장별 구조체
 let waitingQueues = { blackjack: [], holdem: [], indian: [] };
