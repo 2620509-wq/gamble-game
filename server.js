@@ -42,14 +42,6 @@ app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'adm
 app.get('/wallet/:pNum', (req, res) => res.sendFile(path.join(__dirname, 'public', 'wallet.html')));
 app.get('/game/:pNum', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game.html')));
 
-app.get('/dice/:pNum', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html')); // 다이스 게임판
-});
-
-app.get('/slot/:pNum', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'HelloWorldSlotMachine.html')); // 슬롯머신
-});
-
 // 🌟 판이 끝난 유저들을 대기열 목록으로 복귀시키는 함수
 function returnToQueue(gameType, participantIds) {
     participantIds.forEach(pIndex => {
