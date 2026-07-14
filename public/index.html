@@ -450,24 +450,36 @@
     }
 
     // 🔌 [기능 추가] 서버 원장 잔액 동기화 요청 함수
-    function syncBalance() {
-      if (!isNaN(pNum)) {
-        socket.emit('request_balance', { pNum: pNum });
-      }
-    }
+    // 1. 중복 정의 제거 후, 단일 syncBalance 함수 선언
+function syncBalance() {
+  if (typeof socket !== 'undefined' && socket.emit) {
+    socket.emit('request_balance', { pNum: pNum });
+  }
+}
 
-    // 🔌 [기능 추가] 서버로부터 전달받은 최신 자산 원장 데이터를 반영
-    socket.on('respond_balance', (data) => {
-      balance = data.balance;
-      isUserCheckedIn = data.isCheckedIn;
-      updateScreen();
-    });
+// 2. 서버에서 잔액을 보내주었을 때 화면을 지체없이 즉시 갱신하는 리스너
+socket.on('respond_balance', (data) => {
+  balance = data.balance;
+  const balanceElement = document.querySelector("#balance") || document.getElementById("balance-amount") || document.querySelector(".balance-value");
+  
+  if (balanceElement) {
+    balanceElement.textContent = balance.toLocaleString() + (data.isCheckedIn ? " 칩" : " 원");
+  }
+  
+  // 지체 없이 화면의 베팅 금액 제한 및 배당률 텍스트를 즉각 갱신
+  if (typeof updateScreen === 'function') {
+    updateScreen();
+  }
+});
 
-    // 🔌 [기능 추가] 첫 접속 및 외부 정산/카드 결제/관리자 충전 신호(game_update) 발생 시 실시간 연동
-    syncBalance();
-    socket.on('game_update', () => {
-      syncBalance();
-    });
+// 3. 최초 페이지 로드 시 즉시 동기화 실행
+syncBalance();
+
+// 4. 서버로부터 "게임 상태가 바뀌었다"는 알림(game_update)을 받으면 즉시 내 잔고도 다시 조회하여 즉각 반영
+socket.off('game_update'); // 기존에 혹시 중복 등록되어 있을 수 있는 리스너 완전 제거 (안전장치)
+socket.on('game_update', () => {
+  syncBalance();
+});
 
     rollButton.addEventListener("click", () => {
       if (rolling) return;
