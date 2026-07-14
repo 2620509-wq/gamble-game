@@ -278,24 +278,25 @@ app.post('/api/wallet/charge', (req, res) => {
 });
 
 // 🛒 [번호 기반 간편 결제 API] (NFC UID 리더기 대체)
-app.get('/api/pay/:pNum/:amount', (req, res) => {
-    const pNum = parseInt(req.params.pNum);;
-    const cost = parseInt(req.params.amount);
-    if (isNaN(cost) || cost <= 0) {
-        return res.send("INVALID_AMOUNT");
-    }
+app.get('/api/arduino/pay/:uid/:amount', (req, res) => {
+    const uid = req.params.uid.trim().toLowerCase();
+    const cost = parseInt(req.params.amount);
 
-    const player = players.find(p => p.index === pNum);
-    if (!player) return res.send("NOT_FOUND");
+    if (isNaN(cost) || cost <= 0) {
+        return res.send("INVALID_AMOUNT");
+    }
 
-    if (player.walletMoney >= cost) {
-        player.walletMoney -= cost;
-        io.emit('log', `🛒 [지불 완료] [${player.name}] 지갑에서 ${cost.toLocaleString()}원 차감`);
-        broadcastState();
-        res.send("SUCCESS");
-    } else {
-        res.send("NO_MONEY");
-    }
+    const player = players.find(p => p.cardUid === uid);
+    if (!player) return res.send("NOT_FOUND");
+
+    if (player.walletMoney >= cost) {
+        player.walletMoney -= cost;
+        io.emit('log', `🛒 [RFID 결제] [${player.name}] 지갑에서 ${cost.toLocaleString()}원 차감`);
+        broadcastState();
+        res.send("SUCCESS");
+    } else {
+        res.send("NO_MONEY");
+    }
 });
 
 // 🔌 소켓 서버 이벤트 리스너 루프
