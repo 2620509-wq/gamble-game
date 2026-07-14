@@ -297,15 +297,23 @@ app.get('/api/pay/:pNum/:amount', (req, res) => {
 io.on('connection', (socket) => {
     
     // [공통] 플레이어가 페이지 로드 시 잔액을 요청할 때
-    socket.on('request_balance', (data) => {
-        const player = players.find(p => p.index === parseInt(data.pNum));
-        if (player) {
-            // 체크인 상태면 테이블 칩(currentMoney), 아니면 지갑(walletMoney) 전송
-            const balance = player.isCheckedIn ? player.currentMoney : player.walletMoney;
-            socket.emit('respond_balance', { balance: balance, isCheckedIn: player.isCheckedIn });
-        }
-    });
+    // ⭕ [서버 수정안] 최신 상태 동기화 후 전송
+socket.on('request_balance', async (data) => {
+  const { pNum } = data;
+  
+  // 1. [핵심] DB나 원장에서 플레이어의 가장 최신 돈 정보를 먼저 긁어와서 업데이트합니다.
+  // (예: 현재 테이블 칩 정보나 지갑 원장 잔액 최신화 함수 호출)
+  await refreshPlayerBalanceFromDB(pNum); 
 
+  const player = players[pNum];
+  if (!player) return;
+
+  // 2. 완벽히 업데이트가 끝난 최종 '진짜 잔액'을 클라이언트에 내려줍니다.
+  socket.emit('respond_balance', {
+    balance: player.isCheckedIn ? player.currentMoney : player.walletMoney,
+    isCheckedIn: player.isCheckedIn
+  });
+});
     // 🎲 [독립 다이스 게임 전용 연동]
     socket.on('dice_bet_result', (data) => {
         const player = players.find(p => p.index === parseInt(data.pNum));
