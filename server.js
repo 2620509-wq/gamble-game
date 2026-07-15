@@ -14,7 +14,7 @@ const rfidCardUIDs = [
     "88:04:98:c5", "88:04:97:c5", "88:04:a3:c5", 
     "88:04:a2:c5", "88:04:bf:c8", "88:04:be:c8"
 ];
-let players = Array.from({ length: 15 }, (_, i) => ({
+let players = Array.from({ length: 28 }, (_, i) => ({
     index: i + 1,
     // rfidCardUIDs 배열에 값이 있으면 넣고, 13~15번처럼 모자라면 기본값 적용
     cardUid: rfidCardUIDs[i] ? rfidCardUIDs[i].toLowerCase() : `NFC_CARD_${i + 1}`, 
